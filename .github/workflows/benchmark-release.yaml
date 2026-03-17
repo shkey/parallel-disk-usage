@@ -1,0 +1,180 @@
+name: Release Benchmark
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  competing_benchmark:
+    name: Benchmark
+
+    # benchmark needs to run in a quiet environment, without other processes to produce noise.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache (rust)
+        uses: actions/cache@v5
+        timeout-minutes: 2
+        continue-on-error: true
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ github.job }}-Linux-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ github.job }}-Linux-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('**/Cargo.lock') }}
+            ${{ github.job }}-Linux-${{ hashFiles('rust-toolchain') }}-
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          installer=$(mktemp -d)/install-rustup
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > $installer
+          bash $installer --default-toolchain $(cat rust-toolchain) -y
+
+      - name: Build pdu
+        run: |
+          cargo build --release
+          echo "$(pwd)/target/release" >> "$GITHUB_PATH"
+
+      - name: Install dust
+        env:
+          REPO: https://github.com/bootandy/dust
+          VERSION: '1.2.4'
+        run: |
+          mkdir -p DUST.tmp
+          archive_name="dust-v${VERSION}-x86_64-unknown-linux-gnu"
+          curl -L "${REPO}/releases/download/v${VERSION}/${archive_name}.tar.gz" > tmp.dust.tar.gz
+          tar xf tmp.dust.tar.gz --directory=DUST.tmp
+          chmod +x "DUST.tmp/${archive_name}/dust"
+          echo "$(pwd)/DUST.tmp/${archive_name}" >> "$GITHUB_PATH"
+
+      - name: Install dutree
+        env:
+          REPO: https://github.com/nachoparker/dutree
+          VERSION: '0.2.18'
+        run: |
+          mkdir -p DUTREE.tmp
+          flags=(
+            --force
+            --root DUTREE.tmp
+            --version "$VERSION"
+            --profile release
+            --locked
+          )
+          cargo install "${flags[@]}" dutree
+          echo "$(pwd)/DUTREE.tmp/bin" >> "$GITHUB_PATH"
+
+      - name: Install dua
+        env:
+          REPO: https://github.com/Byron/dua-cli
+          VERSION: '2.34.0'
+        run: |
+          mkdir -p DUA.tmp
+          archive_name="dua-v${VERSION}-x86_64-unknown-linux-musl"
+          curl -L "${REPO}/releases/download/v${VERSION}/${archive_name}.tar.gz" > tmp.dua.tar.gz
+          tar xf tmp.dua.tar.gz --directory=DUA.tmp
+          chmod +x "DUA.tmp/${archive_name}/dua"
+          echo "$(pwd)/DUA.tmp/${archive_name}" >> "$GITHUB_PATH"
+
+      - name: Install ncdu
+        run: sudo apt install -y ncdu
+
+      - name: Install gdu
+        env:
+          REPO: https://github.com/dundee/gdu
+          VERSION: '5.31.0'
+        run: |
+          mkdir -p GDU.tmp
+          curl -L "${REPO}/releases/download/v${VERSION}/gdu_linux_amd64.tgz" > tmp.gdu.tar.gz
+          tar xf tmp.gdu.tar.gz --directory=GDU.tmp
+          mkdir -p GDU.tmp/bin
+          chmod +x GDU.tmp/gdu_linux_amd64
+          ln -s "$(pwd)/GDU.tmp/gdu_linux_amd64" GDU.tmp/bin/gdu
+          echo "$(pwd)/GDU.tmp/bin" >> "$GITHUB_PATH"
+
+      - name: Install hyperfine
+        env:
+          REPO: https://github.com/sharkdp/hyperfine
+          VERSION: '1.19.0'
+        run: |
+          mkdir -p HYPERFINE.tmp
+          archive_name="hyperfine-v${VERSION}-x86_64-unknown-linux-gnu"
+          curl -L "${REPO}/releases/download/v${VERSION}/${archive_name}.tar.gz" > tmp.hyperfine.tar.gz
+          tar xf tmp.hyperfine.tar.gz --directory=HYPERFINE.tmp
+          chmod +x "HYPERFINE.tmp/${archive_name}/hyperfine"
+          echo "$(pwd)/HYPERFINE.tmp/${archive_name}" >> "$GITHUB_PATH"
+
+      - name: Inspect command locations
+        run: |
+          which pdu
+          which dust
+          which dutree
+          which dua
+          which ncdu
+          which gdu
+          which du
+          which hyperfine
+
+      - name: Inspect versions of the other tools
+        run: |
+          dust --version
+          dutree --version
+          dua --version
+          ncdu --version
+          gdu --version
+          du --version
+          hyperfine --version
+
+      - name: Prepare directory to be measured
+        run: |
+          mkdir -p tmp.sample
+          curl -L https://github.com/torvalds/linux/archive/refs/tags/v5.12.zip > tmp.sample.zip
+          unzip tmp.sample.zip -d tmp.sample
+          ./ci/make-tree-with-hardlinks.sh tmp.sample
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '16.1.0'
+
+      - name: Cache (pnpm)
+        uses: actions/cache@v5
+        timeout-minutes: 2
+        continue-on-error: true
+        with:
+          path: ~/.pnpm-store/v3
+          key: pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+            pnpm-
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4.2.0
+        with:
+          version: '7.9.0'
+          run_install: 'true'
+
+      - name: Compile TypeScript
+        run: |
+          cd ci/github-actions
+          pnpm exec tsc
+
+      - name: Compare benchmark of pdu against its competitors
+        run: node ci/github-actions/competing-benchmark.js
+
+      - name: Create chart for benchmark reports
+        run: node ci/github-actions/illustrate-benchmark-reports.js
+
+      - name: Create archive of benchmark reports
+        run: tar czf tmp.benchmark-reports.tar.gz tmp.benchmark-report.*
+
+      - name: Upload benchmark reports to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            ./tmp.benchmark-reports.tar.gz \
+            --clobber
