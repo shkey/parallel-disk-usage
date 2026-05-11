@@ -32,7 +32,7 @@ Write documentation, comments, and other prose for ease of understanding first. 
 
 ## Code Style
 
-Automated tools enforce formatting (`cargo fmt`) and linting (`cargo clippy`). The following conventions are **not** enforced by those tools and must be followed manually.
+Automated tools enforce formatting (`cargo fmt`), linting (`cargo clippy`), and a curated set of project-specific rules via dylint (`cargo dylint --all`, run with `DYLINT=true ./test.sh`). The following conventions must be followed manually unless a subsection notes that a specific dylint rule enforces them.
 
 ### Import Organization
 
@@ -54,7 +54,8 @@ use crate::get_size::{GetBlockCount, GetBlockSize};
 
 ### Module Organization
 
-- Use the flat file pattern (`module.rs`) rather than `module/mod.rs` for submodules.
+The flat file pattern (`module.rs` rather than `module/mod.rs`) is enforced by the `perfectionist::flat_module_pattern` dylint check. In addition to that requirement, follow these conventions:
+
 - List `pub mod` declarations first, then `pub use` re-exports, then private imports and items.
 - Use `pub use` to re-export key types at the module level for convenience.
 
