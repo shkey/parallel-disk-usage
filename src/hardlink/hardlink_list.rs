@@ -21,7 +21,7 @@ use pipe_trait::Pipe;
 use std::path::Path;
 
 /// Internal key used to uniquely identify an inode across all filesystems.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct InodeKey {
     /// Inode number within the device.
     ino: InodeNumber,

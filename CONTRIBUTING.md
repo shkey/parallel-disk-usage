@@ -71,16 +71,12 @@ pub use event::Event;
 
 ### Derive Macro Ordering
 
-When deriving multiple traits, use this order and split across multiple `#[derive(...)]` lines for readability:
+The order of trait names within each `#[derive(...)]` attribute is enforced automatically by the `perfectionist::derive_ordering` rule, configured for the `prefix_then_alphabetical` style. The configured `prefix` in `dylint.toml` lists the trait families in their project-preferred order: `Debug`, formatting / error derives (`Display`, `Error`), defaults (`Default`, `SmartDefault`), `Clone` / `Copy`, comparison and `Hash`, reference wrappers (`AsRef`, `AsMut`, `Deref`, `DerefMut`), conversions (`From`, `Into`, `TryFrom`, `TryInto`, `FromStr`), iteration, arithmetic operator pairs and folds, and integer-format derives. Any trait that is not in the `prefix` (project-specific derives such as `Setters` and `Parser`) falls in ASCII-case-insensitive alphabetical order after the prefix entries.
 
-1. **Standard traits:** `Debug`, `Default`, `Clone`, `Copy`
-2. **Comparison traits:** `PartialEq`, `Eq`, `PartialOrd`, `Ord`
-3. **Hash**
-4. **`derive_more` traits:** `Display`, `From`, `Into`, `Add`, `AddAssign`, etc.
-5. **Feature-gated derives** on a separate `#[cfg_attr(...)]` line
+The remaining conventions are not enforced by the rule and must be applied by hand. When a type derives many traits, split them across multiple `#[derive(...)]` lines for readability, and place feature-gated derives on a separate `#[cfg_attr(...)]` line.
 
 ```rust
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Display, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[derive(From, Into, Add, AddAssign, Sub, SubAssign, Sum)]
 #[cfg_attr(feature = "json", derive(Deserialize, Serialize))]
 pub struct Bytes(u64);
@@ -92,11 +88,11 @@ Use **descriptive names** for type parameters, not single letters:
 
 - `Size`, `Name`, `SizeGetter`, `HardlinksRecorder`, `Report`
 
-Single-letter generics are acceptable only in very short, self-contained trait impls.
+Single-letter generics are acceptable only in very short, self-contained trait impls. Enforced by `perfectionist::single_letter_generic`; the threshold for "very short" is the rule's `short_impl_max_lines` knob in `dylint.toml`.
 
 ### Variable and Closure Parameter Naming
 
-Use **descriptive names** for variables and closure parameters by default. Single-letter names are permitted only in the specific cases listed below.
+Use **descriptive names** for variables and closure parameters by default. Single-letter names are permitted only in the specific cases listed below. Enforced by `perfectionist::single_letter_let_binding`, `perfectionist::single_letter_function_param`, and `perfectionist::single_letter_closure_param`; the per-rule `allowed_idents` and `extra_trivial_callback_methods` knobs in `dylint.toml` reflect the exceptions documented here.
 
 #### When single-letter names are allowed
 

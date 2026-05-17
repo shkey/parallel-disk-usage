@@ -4,6 +4,8 @@
 //! [`tree_builder::TreeBuilder`], [`data_tree::DataTree`], or [`visualizer::Visualizer`].
 
 #![deny(warnings)]
+#![cfg_attr(dylint_lib = "perfectionist", feature(register_tool))]
+#![cfg_attr(dylint_lib = "perfectionist", register_tool(perfectionist))]
 
 #[cfg(feature = "json")]
 pub use serde;
