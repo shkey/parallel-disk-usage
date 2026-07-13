@@ -43,51 +43,22 @@ pub trait Canonicalize {
 }
 
 /// Capability: check whether a path exists, mirroring [`Path::exists`].
-#[cfg(target_os = "linux")]
 pub trait PathExists {
+    #[cfg_attr(
+        not(target_os = "linux"),
+        expect(dead_code, reason = "kept cross-platform for uniform bounds")
+    )]
     fn path_exists(path: &Path) -> bool;
 }
 
 /// Capability: read a symbolic link, mirroring [`std::fs::read_link`].
-#[cfg(target_os = "linux")]
 pub trait ReadLink {
+    #[cfg_attr(
+        not(target_os = "linux"),
+        expect(dead_code, reason = "kept cross-platform for uniform bounds")
+    )]
     fn read_link(path: &Path) -> io::Result<PathBuf>;
 }
-
-/// The capabilities the HDD-detection functions require.
-///
-/// This is a bound alias over the individual capability traits above, not an
-/// umbrella capability of its own. It declares no method, and every side
-/// effect still lives in its own single-method trait. It exists only so the
-/// requirement, which varies by platform, is written once rather than repeated
-/// on [`is_hdd`], [`path_is_in_hdd`], and [`any_path_is_in_hdd`].
-///
-/// On Linux the detection additionally probes sysfs to reclassify virtual
-/// block devices, so it also needs [`PathExists`] and [`ReadLink`]. On other
-/// platforms the reclassification is a no-op, so those capabilities are neither
-/// required nor defined.
-#[cfg(target_os = "linux")]
-pub trait HddDetection:
-    GetDiskKind + GetDiskName + GetMountPoint + Canonicalize + PathExists + ReadLink
-{
-}
-
-#[cfg(target_os = "linux")]
-impl<Sys> HddDetection for Sys where
-    Sys: GetDiskKind + GetDiskName + GetMountPoint + Canonicalize + PathExists + ReadLink
-{
-}
-
-/// The capabilities the HDD-detection functions require.
-///
-/// See the Linux definition of this trait for the full explanation. On this
-/// platform the virtual-disk reclassification is a no-op, so only the
-/// disk-reading capabilities and [`Canonicalize`] are needed.
-#[cfg(not(target_os = "linux"))]
-pub trait HddDetection: GetDiskKind + GetDiskName + GetMountPoint + Canonicalize {}
-
-#[cfg(not(target_os = "linux"))]
-impl<Sys> HddDetection for Sys where Sys: GetDiskKind + GetDiskName + GetMountPoint + Canonicalize {}
 
 impl DiskSource for Host {
     type Disk = Disk;
@@ -121,7 +92,6 @@ impl Canonicalize for Host {
     }
 }
 
-#[cfg(target_os = "linux")]
 impl PathExists for Host {
     #[inline]
     fn path_exists(path: &Path) -> bool {
@@ -129,7 +99,6 @@ impl PathExists for Host {
     }
 }
 
-#[cfg(target_os = "linux")]
 impl ReadLink for Host {
     #[inline]
     fn read_link(path: &Path) -> io::Result<PathBuf> {
@@ -324,7 +293,7 @@ where
 /// Check if any path is in any HDD.
 pub fn any_path_is_in_hdd<Sys>(paths: &[PathBuf], disks: &[Sys::Disk]) -> bool
 where
-    Sys: HddDetection,
+    Sys: GetDiskKind + GetDiskName + GetMountPoint + Canonicalize + PathExists + ReadLink,
 {
     paths
         .iter()
@@ -338,7 +307,7 @@ where
 /// around virtual block devices being falsely reported as HDDs on Linux.
 fn path_is_in_hdd<Sys>(path: &Path, disks: &[Sys::Disk]) -> bool
 where
-    Sys: HddDetection,
+    Sys: GetDiskKind + GetDiskName + GetMountPoint + Canonicalize + PathExists + ReadLink,
 {
     let mount_point = find_mount_point(path, disks.iter().map(Sys::get_mount_point));
     let Some(mount_point) = mount_point else {
@@ -353,7 +322,7 @@ where
 /// Check if a disk is an HDD after applying platform-specific corrections.
 fn is_hdd<Sys>(disk: &Sys::Disk) -> bool
 where
-    Sys: HddDetection,
+    Sys: GetDiskKind + GetDiskName + Canonicalize + PathExists + ReadLink,
 {
     let kind = Sys::get_disk_kind(disk);
     let name = Sys::get_disk_name(disk).to_str();
